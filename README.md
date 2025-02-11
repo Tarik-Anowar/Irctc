@@ -12,18 +12,20 @@ env\Scripts\activate     # Windows
 
 git clone https://github.com/Tarik-Anowar/Irctc.git
 
+cd irctc
+cd core
+
 pip install -r requirements.txt
 
 # There may be certain issue reading env varibales so replace these variables in settings.py with actual  keys 
 
-DATABASE_URL=your_database_url
-SECRET_KEY=your_secret_key
-DEBUG=True
+database_url=your_database_url
+secret_key=your_secret_key
+debug_mode=True
 
 # Apply migrations
 
-cd irctc
-cd core
+python manage.py makemigrations
 python manage.py migrate
 
 # crate a super-user
