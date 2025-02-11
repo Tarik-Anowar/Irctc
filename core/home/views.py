@@ -7,7 +7,7 @@ import json
 from accounts.models import User, APIKey
 from home.models import *
 from django.db import transaction
-
+import logging
 
 @login_required
 def home(request):
@@ -79,45 +79,56 @@ def get_seats(request, train_number):
         return JsonResponse({"error": str(e)}, status=500)
 
 
+logger = logging.getLogger(__name__)
+
 @login_required
 def book_seat(request, train_number, seat_number):
-    print("Train Number:", train_number)
-    print("Seat Number:", seat_number)
+    logger.info(f"Attempting to book seat {seat_number} on train {train_number} for user {request.user}")
 
     try:
-        # Fetch train correctly
-        train = Train.objects.filter(number=train_number).first()
-        if not train:
-            return JsonResponse({"error": "Train not found"}, status=404)
+        train = Train.objects.get(number=train_number)
 
-        # Use transaction to prevent race conditions
         with transaction.atomic():
-            # Lock the seat row for update
-            seat = Seat.objects.select_for_update().filter(train=train, seat_number=seat_number).first()
-            if not seat:
-                return JsonResponse({"error": "Seat not found"}, status=404)
+            seat = Seat.objects.select_for_update().get(train=train, seat_number=seat_number)
 
             if seat.is_booked:
+                logger.warning(f"Seat {seat_number} on train {train_number} is already booked")
                 return JsonResponse({"error": "Seat already booked"}, status=400)
 
-            # Create booking
+            updated_rows = Seat.objects.filter(id=seat.id, is_booked=False).update(is_booked=True)
+            
+            if updated_rows == 0:
+                logger.error(f"Race condition detected! Seat {seat_number} was booked just before this request.")
+                return JsonResponse({"error": "Seat booking conflict, please try again"}, status=409)
+
             booking = Booking.objects.create(user=request.user, train=train, seat=seat)
 
-            # Mark seat as booked
-            seat.is_booked = True
-            seat.save()
-
+            logger.info(f"Seat {seat_number} successfully booked for user {request.user}")
             return JsonResponse({"message": "Seat booked successfully!", "seat_number": seat_number})
 
+    except Train.DoesNotExist:
+        logger.error(f"Train {train_number} not found")
+        return JsonResponse({"error": "Train not found"}, status=404)
+    
+    except Seat.DoesNotExist:
+        logger.error(f"Seat {seat_number} not found on train {train_number}")
+        return JsonResponse({"error": "Seat not found"}, status=404)
+    
+    except IntegrityError:
+        logger.error(f"Database IntegrityError while booking seat {seat_number} on train {train_number}")
+        return JsonResponse({"error": "Seat booking conflict, please try again"}, status=409)
+
     except Exception as e:
-        print("Booking error:", e)
+        logger.exception(f"Unexpected error while booking seat {seat_number}: {e}")
         return JsonResponse({"error": str(e)}, status=500)
-
-    return JsonResponse({"error": "Invalid request"}, status=400)
-
 
 @login_required
 def my_bookings(request):
     bookings = Booking.objects.filter(user=request.user).select_related("train", "seat").order_by("-booked_at")
-    print(bookings[0])
+
+    if not bookings.exists():
+        logger.info(f"No bookings found for user {request.user}")
+        return render(request, "bookings.html", {"bookings": []})
+
+    logger.info(f"User {request.user} has {bookings.count()} bookings")
     return render(request, "bookings.html", {"bookings": bookings})

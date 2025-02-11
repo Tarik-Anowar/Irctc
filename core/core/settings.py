@@ -11,7 +11,6 @@ secret_key = config.get("SECRET_KEY")
 debug_mode = config.get("DEBUG")
 
 
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
