@@ -2,11 +2,17 @@
 from pathlib import Path
 import os
 from dotenv import load_dotenv
-load_dotenv(dotenv_path=".env_secrets")
+from dotenv import dotenv_values
+config = dotenv_values(".env_secrets")
 
-database_url = os.getenv("DATABASE_URL")
-secret_key = os.getenv("SECRET_KEY")
-debug_mode = os.getenv("DEBUG")
+
+database_url = config.get("DATABASE_URL")
+secret_key = config.get("SECRET_KEY")
+debug_mode = config.get("DEBUG")
+
+
+
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
