@@ -22,6 +22,7 @@ DEBUG=True
 
 # Apply migrations
 
+cd irctc
 cd core
 python manage.py migrate
 
