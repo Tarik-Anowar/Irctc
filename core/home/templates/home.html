@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+
+{% block title %}
+Train Booking - check-stock.com
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-10">
+    <h2>Find Trains</h2>
+    <form id="trainSearchForm" class="mb-3">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="source">Source</label>
+            <input type="text" id="source" name="source" class="form-control" required>
+        </div>
+        <div class="form-group">
+            <label for="destination">Destination</label>
+            <input type="text" id="destination" name="destination" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary mt-2">Search Trains</button>
+    </form>
+
+    <h3 class="mt-4">Available Trains</h3>
+    <table class="table table-striped mt-3 d-none" id="trainTable">
+        <thead>
+            <tr>
+                <th>Train Name</th>
+                <th>Train Number</th>
+                <th>Departure</th>
+                <th>Arrival</th>
+            </tr>
+        </thead>
+        <tbody id="trainList"></tbody>
+    </table>
+
+    <h3 class="mt-4 d-none" id="seatHeading">Available Seats</h3>
+    <div id="seatContainer" class="d-flex flex-wrap seat-container" style="max-height: 500px; overflow-y: auto;"></div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const trainForm = document.getElementById('trainSearchForm');
+        const trainList = document.getElementById('trainList');
+        const trainTable = document.getElementById('trainTable');
+        const seatContainer = document.getElementById('seatContainer');
+        const seatHeading = document.getElementById('seatHeading');
+
+        let selectedSeat = null;
+
+        trainForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const source = document.getElementById('source').value;
+            const destination = document.getElementById('destination').value;
+
+            try {
+                const response = await fetch(`/api/get_trains/?source=${source}&destination=${destination}`);
+                const data = await response.json();
+
+                trainList.innerHTML = '';
+                if (data.length > 0) {
+                    trainTable.classList.remove('d-none');
+                    data.forEach(train => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td><button class="btn btn-link train-btn" data-number="${train.number}">${train.name}</button></td>
+                            <td>${train.number}</td>
+                            <td>${train.departure_time}</td>
+                            <td>${train.arrival_time}</td>
+                        `;
+                        trainList.appendChild(row);
+                    });
+
+                    document.querySelectorAll('.train-btn').forEach(btn => {
+                        btn.addEventListener('click', async () => {
+                            const trainNumber = btn.getAttribute('data-number');
+                            await fetchSeats(trainNumber);
+                        });
+                    });
+                } else {
+                    trainTable.classList.add('d-none');
+                    alert('No trains found for this route.');
+                }
+            } catch (error) {
+                console.error('Error fetching trains:', error);
+            }
+        });
+
+        async function fetchSeats(trainNumber) {
+            try {
+                console.log("train_number", trainNumber);
+                const response = await fetch(`/api/get_seats/${trainNumber}/`);
+                const data = await response.json();
+
+                seatContainer.innerHTML = '';
+                seatHeading.classList.remove('d-none');
+
+                data.forEach(seat => {
+                    const seatBtn = document.createElement('button');
+                    seatBtn.className = `btn ${seat.is_booked ? 'btn-danger' : 'btn-success'} m-1 seat-btn`;
+                    seatBtn.textContent = `Seat ${seat.seat_number}`;
+                    seatBtn.disabled = seat.is_booked;
+                    seatBtn.dataset.trainNumber = trainNumber;
+                    seatBtn.dataset.seatNumber = seat.seat_number;
+
+                    if (!seat.is_booked) {
+                        seatBtn.addEventListener('click', () => selectSeat(seatBtn));
+                    }
+
+                    seatContainer.appendChild(seatBtn);
+                });
+            } catch (error) {
+                console.error('Error fetching seats:', error);
+            }
+        }
+
+        function selectSeat(seatBtn) {
+            if (seatBtn.classList.contains('btn-danger')) {
+                alert("This seat is already booked.");
+                return;
+            }
+
+            if (selectedSeat) {
+                selectedSeat.classList.replace('btn-info', 'btn-success');
+                document.getElementById('bookSeatBtn')?.remove();
+            }
+
+            selectedSeat = seatBtn;
+            selectedSeat.classList.replace('btn-success', 'btn-info');
+
+            const bookBtn = document.createElement('button');
+            bookBtn.id = 'bookSeatBtn';
+            bookBtn.className = 'btn btn-warning ml-2';
+            bookBtn.textContent = 'Book';
+            bookBtn.addEventListener('click', () => bookSeat(selectedSeat.dataset.trainNumber, selectedSeat.dataset.seatNumber));
+
+            seatContainer.appendChild(bookBtn);
+        }
+
+        async function bookSeat(trainNumber, seatNumber) {
+            try {
+                const response = await fetch(`/api/book_seat/${trainNumber}/${seatNumber}/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ user_id: "{{ user.id }}" })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
+                    alert('Seat booked successfully!');
+                    await fetchSeats(trainNumber);
+                } else {
+                    alert(`Error: ${result.error}`);
+                    selectedSeat.classList.replace('btn-info', 'btn-success');
+                    selectedSeat = null;
+                    document.getElementById('bookSeatBtn')?.remove();
+                }
+            } catch (error) {
+                console.error('Error booking seat:', error);
+                selectedSeat.classList.replace('btn-info', 'btn-success');
+                selectedSeat = null;
+                document.getElementById('bookSeatBtn')?.remove();
+            }
+        }
+    });
+</script>
+{% endblock %}

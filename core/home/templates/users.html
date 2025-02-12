@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+
+{% block title %}User List{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h1>User List</h1>
+  <table class="table table-bordered table-striped">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Email</th>
+        <th>Admin Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+      <tr data-user-email="{{ user.email }}">
+        <td>{{ user.username }}</td>
+        <td>{{ user.email }}</td>
+        <td class="admin-status">
+          {% if user.is_superuser %}
+            <span class="badge bg-danger">Admin</span>
+          {% else %}
+            <span class="badge bg-success">User</span>
+          {% endif %}
+        </td>
+        <td>
+          <button 
+            class="btn {% if user.is_superuser %}btn-danger{% else %}btn-success{% endif %} toggle-admin-btn"
+            data-user-email="{{ user.email }}"
+          >
+            {% if user.is_superuser %}
+              Revoke Admin
+            {% else %}
+              Make Admin
+            {% endif %}
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const buttons = document.querySelectorAll('.toggle-admin-btn');
+
+    buttons.forEach(button => {
+      button.addEventListener('click', function() {
+        const email = this.getAttribute('data-user-email');
+        const row = document.querySelector(`tr[data-user-email="${email}"]`);
+        const statusElement = row.querySelector('.admin-status');
+        const buttonElement = this;
+
+        fetch(`/users/toggle-admin/${email}/`, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': '{{ csrf_token }}'
+          }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === 'success') {
+            if (buttonElement.classList.contains('btn-danger')) {
+              buttonElement.classList.remove('btn-danger');
+              buttonElement.classList.add('btn-success');
+              buttonElement.innerText = 'Make Admin';
+              statusElement.innerHTML = '<span class="badge bg-success">User</span>';
+            } else {
+              buttonElement.classList.remove('btn-success');
+              buttonElement.classList.add('btn-danger');
+              buttonElement.innerText = 'Revoke Admin';
+              statusElement.innerHTML = '<span class="badge bg-danger">Admin</span>';
+            }
+          } else {
+            alert(data.error || 'Error toggling admin status');
+          }
+        })
+        .catch(error => console.error('Error:', error));
+      });
+    });
+  });
+</script>
+{% endblock %}
