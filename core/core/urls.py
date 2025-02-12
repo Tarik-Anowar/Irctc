@@ -14,6 +14,8 @@ urlpatterns = [
 
     path('add_train/', add_train, name="add_train"),
     path('bookings/', my_bookings, name="my_bookings"),
+    path('users/',fetch_users,name="fetch_users"),
+    path('users/toggle-admin/<str:email>/', toggle_admin, name="toggle_admin"),
 
     path('signup/', signup, name="signup"),
     path('signin/', signin, name="signin"),

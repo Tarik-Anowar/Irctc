@@ -1,13 +1,14 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 import json
-from accounts.models import User, APIKey
+from accounts.models import *
 from home.models import *
 from django.db import transaction
 import logging
+from django.db import IntegrityError
 
 @login_required
 def home(request):
@@ -52,6 +53,60 @@ def add_train(request):
 
     trains = Train.objects.all()
     return render(request, "add_train.html", {"trains": trains})
+
+
+
+@login_required
+def fetch_users(request):
+    user = request.user
+
+    if not user.is_admin or not user.admin_api_key:
+        return JsonResponse({"error": "Unauthorized access"}, status=403)
+
+    if not APIKey.objects.filter(key=user.admin_api_key, user=user).exists():
+        return JsonResponse({"error": "Invalid API key"}, status=403)
+    
+    try:
+        users = User.objects.all().exclude(email=user.email)
+        return render(request, "users.html", {"users": users})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@login_required
+def toggle_admin(request, email):
+    if request.method != 'POST':
+        return JsonResponse({"error": "Invalid request method"}, status=405)
+
+    admin = request.user
+
+    if not admin.is_superuser:
+        return JsonResponse({"error": "Unauthorized access"}, status=403)
+
+    if admin.admin_api_key and not APIKey.objects.filter(key=admin.admin_api_key, user=admin).exists():
+        return JsonResponse({"error": "Invalid API key"}, status=403)
+
+    try:
+        with transaction.atomic():
+            user = get_object_or_404(User, email=email)
+            
+            user.is_admin = not user.is_admin
+            user.save()
+
+            if user.is_admin:
+                api_key, created = APIKey.objects.get_or_create(user=user)
+                user.admin_api_key = api_key.key
+                user.save(update_fields=['admin_api_key'])
+            else:
+                APIKey.objects.filter(user=user).delete()
+                user.admin_api_key = None
+                user.save(update_fields=['admin_api_key'])
+            user.save()
+        print(f"User {user.email} admin status: {user.is_admin}")
+        print(f"User {user.email} admin API key: {user.admin_api_key}")
+        return JsonResponse({"status": "success", "message": "User admin status toggled successfully"}, status=200)
+    except Exception as e:
+        print(e)
+        return JsonResponse({"error": str(e)}, status=500)
 
 @login_required
 def get_trains(request):
